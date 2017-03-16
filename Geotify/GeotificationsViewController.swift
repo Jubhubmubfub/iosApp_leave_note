@@ -35,6 +35,41 @@ class GeotificationsViewController: UIViewController {
   var geotifications: [Geotification] = []
   let locationManager = CLLocationManager() // Add this statement
 
+  func region(withGeotification geotification: Geotification) -> CLCircularRegion {
+    // 1
+    let region = CLCircularRegion(center: geotification.coordinate, radius: geotification.radius, identifier: geotification.identifier)
+    // 2
+    region.notifyOnEntry = (geotification.eventType == .onEntry)
+    region.notifyOnExit = !region.notifyOnEntry
+// WE COMMENTED THIS OUT SO USER DOESNT HAVE TO PICK IF ON ENTRY OR NOT
+    return region
+  }
+  
+  func startMonitoring(geotification: Geotification) {
+    // 1
+    if !CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) {
+      showAlert(withTitle:"Error", message: "Geofencing is not supported on this device!")
+      return
+    }
+    // 2
+    if CLLocationManager.authorizationStatus() != .authorizedAlways {
+      showAlert(withTitle:"Warning", message: "Your geotification is saved but will only be activated once you grant Geotify permission to access the device location.")
+    }
+    // 3
+    let region = self.region(withGeotification: geotification)
+    // 4
+    locationManager.startMonitoring(for: region)
+// OKAY NOW WE MADE THE REGION AND PASSED IT INTO THE NOTIFICATION AND STARTED MONITORING
+  }
+  
+  func stopMonitoring(geotification: Geotification) {
+    for region in locationManager.monitoredRegions {
+      guard let circularRegion = region as? CLCircularRegion, circularRegion.identifier == geotification.identifier else { continue }
+      locationManager.stopMonitoring(for: circularRegion)
+    }
+  }
+  
+  
   
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -90,9 +125,13 @@ class GeotificationsViewController: UIViewController {
     updateGeotificationsCount()
   }
   
-  func updateGeotificationsCount() {
-    title = "Geotifications (\(geotifications.count))"
-  }
+
+    func updateGeotificationsCount() {
+      title = "Geotifications (\(geotifications.count))"
+      navigationItem.rightBarButtonItem?.isEnabled = (geotifications.count < 20)  // Add this line
+    }
+// THIS MAKES IT SO YOU CANT ADD MORE THAN 20 GEONOTIFIACATIONS
+
   
   // MARK: Map overlay functions
   func addRadiusOverlay(forGeotification geotification: Geotification) {
@@ -124,17 +163,30 @@ extension GeotificationsViewController: AddGeotificationsViewControllerDelegate 
   
   func addGeotificationViewController(controller: AddGeotificationViewController, didAddCoordinate coordinate: CLLocationCoordinate2D, radius: Double, identifier: String, note: String, eventType: EventType) {
     controller.dismiss(animated: true, completion: nil)
-    let geotification = Geotification(coordinate: coordinate, radius: radius, identifier: identifier, note: note, eventType: eventType)
+    // 1
+    let clampedRadius = min(radius, locationManager.maximumRegionMonitoringDistance)
+    let geotification = Geotification(coordinate: coordinate, radius: clampedRadius, identifier: identifier, note: note, eventType: eventType)
     add(geotification: geotification)
+    // 2
+    startMonitoring(geotification: geotification)
     saveAllGeotifications()
   }
   
 }
+// THIS MONITORS THE REGION AND ITS RADIUS
+// THERE MIGHT BE LIMITIATION FOR 20 PER APP
 
 // MARK: - Location Manager Delegate
 extension GeotificationsViewController: CLLocationManagerDelegate {
   func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
     mapView.showsUserLocation = (status == .authorizedAlways)
+  }
+  func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+    print("Monitoring failed for region with identifier: \(region!.identifier)")
+  }
+  
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    print("Location Manager failed with the following error: \(error)")
   }
 }
 
@@ -175,6 +227,7 @@ extension GeotificationsViewController: MKMapViewDelegate {
   func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
     // Delete geotification
     let geotification = view.annotation as! Geotification
+    stopMonitoring(geotification: geotification)   // SO THIS STOPS MONITORING BEFORE REMOVING IT 
     remove(geotification: geotification)
     saveAllGeotifications()
   }

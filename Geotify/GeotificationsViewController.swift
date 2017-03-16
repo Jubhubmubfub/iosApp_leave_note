@@ -33,7 +33,7 @@ class GeotificationsViewController: UIViewController {
   @IBOutlet weak var mapView: MKMapView!
   
   var geotifications: [Geotification] = []
-  let locationManager = CLLocationManager() // Add this statement
+  var locationManager = CLLocationManager() // Add this statement
 
   func region(withGeotification geotification: Geotification) -> CLCircularRegion {
     // 1
@@ -75,6 +75,8 @@ class GeotificationsViewController: UIViewController {
     super.viewDidLoad()
     // 1
     locationManager.delegate = self
+    locationManager.desiredAccuracy = kCLLocationAccuracyBest
+
     // 2
     locationManager.requestAlwaysAuthorization()
     // 3
